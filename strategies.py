@@ -26,6 +26,86 @@ class ExampleEngine(MinimalEngine):
     pass
 
 
+
+PIECE_VALUES = {
+    chess.KING: 0,
+    chess.QUEEN: 9,
+    chess.BISHOP: 3.5,
+    chess.KNIGHT: 3,
+    chess.ROOK: 5,
+    chess.PAWN: 1
+}
+
+def negamax(board: chess.Board, player: int, depth: int, alpha: int, beta: int):
+    if depth == 0:
+        return eval_board(board, player)
+    maxValue = alpha
+
+    moves = board.legal_moves
+    best_move = None
+    for move in moves:
+        newBoard = copy.deepcopy(board)
+        newBoard.push(move)
+
+        _, value = -negamax(newBoard, 1-player, depth-1, -beta, maxValue)
+
+        if (value > maxValue):
+            maxValue = value
+            best_move = move
+        # if (depth == Suchtiefe)
+        #     besterZug = Zug;
+        if (maxValue >= beta):
+            break
+    return best_move, maxValue
+
+def eval_board(board: chess.Board):
+    white_score = 0
+    black_score = 0
+
+    for piece_type in chess.PIECE_TYPES:
+        num_piece = len(board.pieces(piece_type, chess.WHITE))
+        white_score += PIECE_VALUES[piece_type] * num_piece
+
+    for piece_type in chess.PIECE_TYPES:
+        num_piece = len(board.pieces(piece_type, chess.BLACK))
+        black_score += PIECE_VALUES[piece_type] * num_piece
+
+    if board.turn == chess.WHITE:
+        return white_score - black_score
+    else:
+        return black_score - white_score
+
+class BertEngine(MinimalEngine):
+    def search(self, board: chess.Board, time_limit: chess.engine.Limit, ponder: bool, draw_offered: bool, root_moves: MOVE) -> PlayResult:
+        # return super().search(board, time_limit, ponder, draw_offered, root_moves)
+
+        best_moves = []
+        best_score = 9999
+
+        # check_moves = root_moves if root_moves is not None else board.legal_moves
+        check_moves = board.legal_moves
+
+        for move in board.legal_moves:
+            print(move)
+            new_board = copy.deepcopy(board)
+            new_board.push(move)
+            score = eval_board(new_board)
+
+            logger.info(board.piece_at(move.from_square), move, score)
+
+            # try to minimize for opponent
+            if score < best_score:
+                best_score = score
+                best_moves = [move]
+            elif score == best_score:
+                best_moves.append(move)
+            else:
+                pass
+
+        best_move = random.choice(best_moves)
+
+        return PlayResult(best_move, None)
+
 # Strategy names and ideas from tom7's excellent eloWorld video
 
 class RandomMove(ExampleEngine):
