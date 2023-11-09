@@ -7,10 +7,14 @@ With these classes, bot makers will not have to implement the UCI or XBoard inte
 from __future__ import annotations
 import chess
 from chess.engine import PlayResult
+from chess.polyglot import zobrist_hash
 import random
 from engine_wrapper import MinimalEngine
 from typing import Any, Union
+from tqdm import tqdm
 import logging
+import copy
+from functools import lru_cache
 MOVE = Union[chess.engine.PlayResult, list[chess.Move]]
 
 
@@ -18,6 +22,11 @@ MOVE = Union[chess.engine.PlayResult, list[chess.Move]]
 # logger.info("message") will always print "message" to the console or log file.
 # logger.debug("message") will only print "message" if verbose logging is enabled.
 logger = logging.getLogger(__name__)
+
+
+class HashableChessBoard(chess.Board):
+    def __hash__(self):
+        return zobrist_hash(self)
 
 
 class ExampleEngine(MinimalEngine):
@@ -36,28 +45,47 @@ PIECE_VALUES = {
     chess.PAWN: 1
 }
 
-def negamax(board: chess.Board, player: int, depth: int, alpha: int, beta: int):
+def colorFactor(player: chess.WHITE | chess.BLACK) -> int:
+    return 1 if player == chess.WHITE else -1
+
+def negamax(board: chess.Board, depth: int, alpha: int = -999999, beta: int = 999999):
     if depth == 0:
-        return eval_board(board, player)
-    maxValue = alpha
+        return eval_board(board)
+    maxValue = -999999
 
     moves = board.legal_moves
-    best_move = None
+    
     for move in moves:
-        newBoard = copy.deepcopy(board)
-        newBoard.push(move)
-
-        _, value = -negamax(newBoard, 1-player, depth-1, -beta, maxValue)
+        board.push(move)
+        value = -negamax(board, depth-1, -beta, maxValue)
+        board.pop(move)
 
         if (value > maxValue):
             maxValue = value
-            best_move = move
         # if (depth == Suchtiefe)
         #     besterZug = Zug;
         if (maxValue >= beta):
             break
-    return best_move, maxValue
+    return maxValue
 
+def alphaBetaNegaMax(board: chess.Board, depth: int, alpha: int = -999999, beta: int = 999999):
+    if (depth == 0):
+        return eval_board(board)
+    
+    for move in board.legal_moves:
+        newBoard = copy.deepcopy(board)
+        newBoard.push(move)
+        score = -alphaBetaNegaMax(newBoard, depth-1, -beta, -alpha)
+        
+        if score >= beta:
+            return beta
+        
+        if score > alpha:
+            alpha = score
+        
+    return alpha
+
+@lru_cache(maxsize=2**16)
 def eval_board(board: chess.Board):
     white_score = 0
     black_score = 0
@@ -69,40 +97,51 @@ def eval_board(board: chess.Board):
     for piece_type in chess.PIECE_TYPES:
         num_piece = len(board.pieces(piece_type, chess.BLACK))
         black_score += PIECE_VALUES[piece_type] * num_piece
+    
+    score = (white_score - black_score) * colorFactor(board.turn)
+        
+    if board.is_checkmate():
+        score = -999999
+        
+    if board.is_check():
+        score -= 100
+    
 
-    if board.turn == chess.WHITE:
-        return white_score - black_score
-    else:
-        return black_score - white_score
+    return score
 
 class BertEngine(MinimalEngine):
     def search(self, board: chess.Board, time_limit: chess.engine.Limit, ponder: bool, draw_offered: bool, root_moves: MOVE) -> PlayResult:
         # return super().search(board, time_limit, ponder, draw_offered, root_moves)
+        print(eval_board.cache_info())
+        board = HashableChessBoard(board.fen())
 
         best_moves = []
-        best_score = 9999
+        best_score = -999999
 
         # check_moves = root_moves if root_moves is not None else board.legal_moves
         check_moves = board.legal_moves
 
-        for move in board.legal_moves:
-            print(move)
+        for move in tqdm(list(board.legal_moves), leave=False):
             new_board = copy.deepcopy(board)
             new_board.push(move)
-            score = eval_board(new_board)
-
-            logger.info(board.piece_at(move.from_square), move, score)
+            score = alphaBetaNegaMax(new_board, depth=3)
+            
+            user_score = score if board.turn == chess.WHITE else -score
 
             # try to minimize for opponent
-            if score < best_score:
-                best_score = score
+            if user_score > best_score:
+                best_score = user_score
                 best_moves = [move]
-            elif score == best_score:
+            elif user_score == best_score:
                 best_moves.append(move)
             else:
                 pass
 
         best_move = random.choice(best_moves)
+        
+        # PAWN moves are unreversible
+        if best_move.drop == chess.PAWN:
+            eval_board.cache_clear()
 
         return PlayResult(best_move, None)
 

@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "chessbertbot"
+version = "0.1.0"
+description = ""
+authors = ["Moraxno <robertbock.98@googlemail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+chess = "1.10.0"
+pyyaml = "6.0.1"
+requests = "2.31.0"
+backoff = "2.2.1"
+rich = "13.6.0"
+tqdm = "^4.66.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
